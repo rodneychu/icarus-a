@@ -303,11 +303,14 @@ void record_power_sample(uint8_t* buf, uint16_t bytes) {
       ((uint16_t)SAMPLE_BUFFER_SIZE * SAMPLE_INTERVAL)) / SAMPLE_INTERVAL;
   uint8_t prev_index = (prev_power_millis %
       ((uint16_t)SAMPLE_BUFFER_SIZE * SAMPLE_INTERVAL)) / SAMPLE_INTERVAL;
-  if (current_index - prev_index > 1) {
-    uint16_t average = (power[prev_index] + current_watts) / (current_index - prev_index);
-    for (uint8_t i = prev_index + 1; i < current_index; i++) {
-      power[i] = average;
-    }
+
+  int skipped = (int) current_index - (int) prev_index;
+  if (skipped < 0) {
+    skipped = SAMPLE_BUFFER_SIZE - skipped;
+  }
+  uint16_t average = (power[prev_index] + current_watts) / (current_index - prev_index);
+  for (uint8_t i = 1; i < skipped; i++) {
+    power[(prev_index + i) % SAMPLE_BUFFER_SIZE] = average;
   }
   power[current_index] = current_watts;
 
@@ -386,7 +389,7 @@ void refresh_display() {
     dbl_total += airspeed[(start_index + i) % SAMPLE_BUFFER_SIZE];
   }
   double avg_airspeed = (dbl_total / (SAMPLE_WINDOW * SAMPLE_RATE))
-      * (3.6 / SAMPLE_WINDOW);  // converted to km/h
+      * 3.6;  // m/s converted to km/h
       
 #ifdef EXTRADEBUG
   Serial.print(F("\r\nairspeed (km/h):\t"));
@@ -453,8 +456,12 @@ void record_airspeed_sample() {
   airspeed[current_index] = sqrt((2.0f * abs(differential * 1000)) / SEA_LEVEL_DENSITY)
       * (differential < 0 ? -1 : 1);
 
-  for (uint8_t i = 0; i < prev_index + 1; i < current_index; i++) {
-    airspeed[i] = airspeed[current_index];
+  int skipped = (int) current_index - (int) prev_index;
+  if (skipped < 0) {
+    skipped = SAMPLE_BUFFER_SIZE - skipped;
+  }
+  for (uint8_t i = 1; i < skipped; i++) {
+    airspeed[(prev_index + i) % SAMPLE_BUFFER_SIZE] = airspeed[current_index];
   }
 
   prev_airspeed_millis = current_millis;
@@ -513,12 +520,13 @@ void record_pressure_sample() {
   }
   current_pressure = P;
 
-  uint8_t skipped = ((current_index + SAMPLE_BUFFER_SIZE) % SAMPLE_BUFFER_SIZE) - prev_index;
-  if (skipped > 1) {
-    double incr = (P - pressure[prev_index]) / skipped;
-    for (uint8_t i = prev_index + 1; i < current_index; i++) {
-      pressure[i] = pressure[prev_index] + (incr * i);
-    }
+  int skipped = (int) current_index - (int) prev_index;
+  if (skipped < 0) {
+    skipped = SAMPLE_BUFFER_SIZE - skipped;
+  }
+  double incr = (P - pressure[prev_index]) / skipped;
+  for (uint8_t i = 1; i < skipped; i++) {
+    pressure[(prev_index + i) % SAMPLE_BUFFER_SIZE] = pressure[prev_index] + (incr * i);
   }
   pressure[current_index] = P;
   prev_pressure_millis = current_millis;
